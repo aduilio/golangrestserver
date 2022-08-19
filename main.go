@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 	_ "github.com/mattn/go-sqlite3"
+	"github.comn/aduilio/golangrestserver/domain"
 	"github.comn/aduilio/golangrestserver/dto"
 	"github.comn/aduilio/golangrestserver/repository"
 )
@@ -24,29 +25,33 @@ func main() {
 	err := http.ListenAndServe(":8000", router)
 	if err != nil {
 		fmt.Println(err.Error())
-	} else {
-		fmt.Println("Server runnning at 8000")
+		return
 	}
+
+	fmt.Println("Server runnning at 8000")
 }
 
 func PostBankAccounts(w http.ResponseWriter, r *http.Request) {
-	accountRequest := dto.AccountRequest{}
-
-	err := json.NewDecoder(r.Body).Decode(&accountRequest)
+	accountRequest, err := parseAccountRequest(w, r)
 	if err != nil {
-		createErrorMessage(w, "Fail to parse the request body", err.Error())
 		return
 	}
 
-	if len(accountRequest.Number) == 0 {
-		createErrorMessage(w, "Missing account_number", "Inform the account_number in the body")
+	if !dbRepository.ValidateNumber(accountRequest.Number) {
+		createErrorMessage(w, "Fail to save the account", "This account number already exists")
 		return
 	}
 
-	fmt.Println(fmt.Sprintf("Creating a new bank account: %s", accountRequest.Number))
+	account := domain.NewAccount()
+	account.Number = accountRequest.Number
 
-	response := dto.AccountResponse{ID: "123456", Number: accountRequest.Number}
+	err = dbRepository.Save(account)
+	if err != nil {
+		createErrorMessage(w, "Fail to save the account", err.Error())
+		return
+	}
 
+	response := dto.AccountResponse{ID: account.ID, Number: account.Number}
 	createResponse(w, http.StatusCreated, response)
 }
 
@@ -81,6 +86,24 @@ func PostTranfer(w http.ResponseWriter, r *http.Request) {
 	response := dto.TransferResponse{From: accountFrom, To: accountTo}
 
 	createResponse(w, http.StatusOK, response)
+}
+
+func parseAccountRequest(w http.ResponseWriter, r *http.Request) (*dto.AccountRequest, error) {
+	accountRequest := dto.AccountRequest{}
+
+	err := json.NewDecoder(r.Body).Decode(&accountRequest)
+	if err != nil {
+		createErrorMessage(w, "Fail to parse the request body", err.Error())
+		return nil, err
+	}
+
+	if len(accountRequest.Number) == 0 {
+		createErrorMessage(w, "Missing account_number", "Inform the account_number in the body")
+		return nil, err
+	}
+
+	fmt.Println(fmt.Sprintf("Creating a new bank account: %s", accountRequest.Number))
+	return &accountRequest, nil
 }
 
 func createErrorMessage(w http.ResponseWriter, message string, details string) {
