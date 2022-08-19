@@ -32,8 +32,8 @@ func main() {
 }
 
 func PostBankAccounts(w http.ResponseWriter, r *http.Request) {
-	accountRequest, err := parseAccountRequest(w, r)
-	if err != nil {
+	accountRequest, isValid := parseAccountRequest(w, r)
+	if !isValid {
 		return
 	}
 
@@ -45,7 +45,7 @@ func PostBankAccounts(w http.ResponseWriter, r *http.Request) {
 	account := domain.NewAccount()
 	account.Number = accountRequest.Number
 
-	err = dbRepository.Save(account)
+	err := dbRepository.Save(account)
 	if err != nil {
 		createErrorMessage(w, "Fail to save the account", err.Error())
 		return
@@ -56,54 +56,76 @@ func PostBankAccounts(w http.ResponseWriter, r *http.Request) {
 }
 
 func PostTranfer(w http.ResponseWriter, r *http.Request) {
-	transferRequest := dto.TransferRequest{}
+	transferRequest, isValid := parseTransferRequest(r, w)
+	if !isValid {
+		return
+	}
 
-	err := json.NewDecoder(r.Body).Decode(&transferRequest)
+	if dbRepository.ValidateNumber(transferRequest.From) {
+		createErrorMessage(w, "Fail to transfer", "The source account number does not exist")
+		return
+	}
+
+	if dbRepository.ValidateNumber(transferRequest.To) {
+		createErrorMessage(w, "Fail to transfer", "The destination account number does not exist")
+		return
+	}
+
+	accountFromBalance, accountToBalance, err := dbRepository.Tranfer(transferRequest)
 	if err != nil {
-		createErrorMessage(w, "Fail to parse the request body", err.Error())
+		createErrorMessage(w, "Fail to transfer", err.Error())
 		return
 	}
 
-	if len(transferRequest.From) == 0 {
-		createErrorMessage(w, "Missing from", "Inform the source account (from) in the body")
-		return
-	}
-
-	if len(transferRequest.To) == 0 {
-		createErrorMessage(w, "Missing to", "Inform the destination account (to) in the body")
-		return
-	}
-
-	if transferRequest.Amount <= 0 {
-		createErrorMessage(w, "Invalid amount", "Inform a positive amount")
-		return
-	}
-
-	fmt.Println(fmt.Sprintf("Transfering %f from %s to %s", transferRequest.Amount, transferRequest.From, transferRequest.To))
-
-	accountFrom := dto.AccountTransfer{Number: transferRequest.From, Balance: 100}
-	accountTo := dto.AccountTransfer{Number: transferRequest.To, Balance: 50}
+	accountFrom := dto.AccountTransfer{Number: transferRequest.From, Balance: *accountFromBalance}
+	accountTo := dto.AccountTransfer{Number: transferRequest.To, Balance: *accountToBalance}
 	response := dto.TransferResponse{From: accountFrom, To: accountTo}
 
 	createResponse(w, http.StatusOK, response)
 }
 
-func parseAccountRequest(w http.ResponseWriter, r *http.Request) (*dto.AccountRequest, error) {
+func parseAccountRequest(w http.ResponseWriter, r *http.Request) (*dto.AccountRequest, bool) {
 	accountRequest := dto.AccountRequest{}
 
 	err := json.NewDecoder(r.Body).Decode(&accountRequest)
 	if err != nil {
 		createErrorMessage(w, "Fail to parse the request body", err.Error())
-		return nil, err
+		return nil, false
 	}
 
 	if len(accountRequest.Number) == 0 {
 		createErrorMessage(w, "Missing account_number", "Inform the account_number in the body")
-		return nil, err
+		return nil, false
 	}
 
-	fmt.Println(fmt.Sprintf("Creating a new bank account: %s", accountRequest.Number))
-	return &accountRequest, nil
+	return &accountRequest, true
+}
+
+func parseTransferRequest(r *http.Request, w http.ResponseWriter) (*dto.TransferRequest, bool) {
+	transferRequest := dto.TransferRequest{}
+
+	err := json.NewDecoder(r.Body).Decode(&transferRequest)
+	if err != nil {
+		createErrorMessage(w, "Fail to parse the request body", err.Error())
+		return nil, false
+	}
+
+	if len(transferRequest.From) == 0 {
+		createErrorMessage(w, "Missing from", "Inform the source account (from) in the body")
+		return nil, false
+	}
+
+	if len(transferRequest.To) == 0 {
+		createErrorMessage(w, "Missing to", "Inform the destination account (to) in the body")
+		return nil, false
+	}
+
+	if transferRequest.Amount <= 0 {
+		createErrorMessage(w, "Invalid amount", "Inform a positive amount")
+		return nil, false
+	}
+
+	return &transferRequest, true
 }
 
 func createErrorMessage(w http.ResponseWriter, message string, details string) {
