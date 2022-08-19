@@ -6,17 +6,27 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	_ "github.com/mattn/go-sqlite3"
 	"github.comn/aduilio/golangrestserver/dto"
+	"github.comn/aduilio/golangrestserver/repository"
 )
 
+var dbRepository repository.BankAccountsDb
+
 func main() {
+	dbRepository = *repository.NewBankAccountsDb()
+
 	router := mux.NewRouter()
 
 	router.HandleFunc("/bank-accounts", PostBankAccounts).Methods("POST")
 	router.HandleFunc("/bank-accounts/transfer", PostTranfer).Methods("POST")
 
-	fmt.Println("Server runnning at 8080")
-	http.ListenAndServe(":8000", router)
+	err := http.ListenAndServe(":8000", router)
+	if err != nil {
+		fmt.Println(err.Error())
+	} else {
+		fmt.Println("Server runnning at 8000")
+	}
 }
 
 func PostBankAccounts(w http.ResponseWriter, r *http.Request) {
