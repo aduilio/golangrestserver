@@ -1,9 +1,10 @@
 FROM golang:1.15
 
 WORKDIR /go/src
+ENV PATH="/go/bin:${PATH}"
+ENV GO111MODULE=on
+ENV CGO_ENABLED=1
 
-RUN go build -o main
+RUN go run main.go
 
-EXPOSE 8000
-
-CMD ["./main"]
+CMD ["tail", "-f", "/dev/null"]
